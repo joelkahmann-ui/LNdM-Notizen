@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NoteStudio – Kollaboratives Notizbuch</title>
+    <!-- Tailwind CSS für modernes, responsives Design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons für gestochen scharfe Werkzeug-Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            overscroll-behavior: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* Papier-Muster Hintergründe */
+        .paper-blank {
+            background-color: #ffffff;
+        }
+        .paper-lined {
+            background-color: #ffffff;
+            background-image: linear-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 100% 32px;
+        }
+        .paper-grid {
+            background-color: #ffffff;
+            background-image: 
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+        .paper-dotted {
+            background-color: #ffffff;
+            background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+            background-size: 24px 24px;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        /* Zeichenfläche Touch-Optimierung */
+        #drawingCanvas {
+            touch-action: none;
+            cursor: crosshair;
+        }
+        /* Animations-Hilfsklassen */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-pop {
+            animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- ==================== DASHBOARD VIEW (DOKUMENTEN-ÜBERSICHT) ==================== -->
+    <div id="dashboardView" class="flex-1 flex flex-col h-full overflow-hidden">
+        <!-- Top Header -->
+        <header class="bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-20">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                    <i data-lucide="book-open" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-slate-900">NoteStudio</h1>
+                    <p class="text-xs text-slate-500 flex items-center gap-1.5">
+                        <span id="connectionDot" class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+                        <span id="connectionStatusText">Verbinde mit Cloud...</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button onclick="openCreateModal()" class="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm flex items-center gap-2 transition active:scale-95">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>Neues Notizbuch</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Gallery -->
+        <main class="flex-1 overflow-y-auto p-4 sm:p-8 max-w-7xl w-full mx-auto">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-800">Alle geteilten Dokumente</h2>
+                    <p class="text-sm text-slate-500">Jeder Besucher sieht diese Notizbücher. Mit dem Passwort könnt ihr sie gemeinsam in Echtzeit bearbeiten.</p>
+                </div>
+                <div class="relative w-full sm:w-64">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                    <input type="text" id="searchInput" oninput="renderDocuments()" placeholder="Notizbuch suchen..." class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <!-- Grid für Notizbücher -->
+            <div id="documentsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
+                <!-- Wird dynamisch per JS gefüllt -->
+            </div>
+
+            <!-- Leer-Zustand -->
+            <div id="emptyState" class="hidden flex-col items-center justify-center py-20 text-center">
+                <div class="w-16 h-16 rounded-2xl bg-slate-200/70 flex items-center justify-center text-slate-400 mb-4">
+                    <i data-lucide="folder-open" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-base font-semibold text-slate-700">Noch keine Dokumente vorhanden</h3>
+                <p class="text-sm text-slate-500 max-w-sm mt-1 mb-5">Erstelle das erste passwortgeschützte Notizbuch, um allein oder zusammen mit anderen zu zeichnen und zu schreiben.</p>
+                <button onclick="openCreateModal()" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+                    Erstes Dokument anlegen
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== EDITOR VIEW (GOODNOTES ARBEITSFLÄCHE) ==================== -->
+    <div id="editorView" class="hidden flex-1 flex-col h-full overflow-hidden bg-slate-200">
+        <!-- Obere GoodNotes Navigationsleiste -->
+        <div class="bg-slate-900 text-white px-3 py-2 flex items-center justify-between gap-2 z-30 shadow-md">
+            <!-- Links: Zurück & Dokumenttitel -->
+            <div class="flex items-center gap-2 min-w-0">
+                <button onclick="exitEditor()" class="p-2 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1" title="Zurück zur Übersicht">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                    <span class="text-xs font-medium hidden md:inline">Übersicht</span>
+                </button>
+                <div class="h-5 w-[1px] bg-slate-700"></div>
+                <div class="truncate">
+                    <h2 id="editorDocTitle" class="text-sm font-semibold truncate">Notizbuch</h2>
+                    <div class="flex items-center gap-2 text-[11px] text-slate-400">
+                        <span id="pageIndicator">Seite 1 / 1</span>
+                        <span>•</span>
+                        <span id="activeUsersBadge" class="text-emerald-400 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Live-Sync
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mitte: Seitennavigation & Export -->
+            <div class="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl border border-slate-700">
+                <button onclick="prevPage()" id="prevPageBtn" class="p-1.5 rounded-lg hover:bg-slate-700 disabled:opacity-30 transition" title="Vorherige Seite">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                </button>
+                <button onclick="addNewPage()" class="px-2.5 py-1 rounded-lg hover:bg-slate-700 text-xs font-medium flex items-center gap-1 transition" title="Neue Seite hinzufügen">
+                    <i data-lucide="file-plus" class="w-3.5 h-3.5 text-blue-400"></i>
+                    <span class="hidden sm:inline">+ Seite</span>
+                </button>
+                <button onclick="nextPage()" id="nextPageBtn" class="p-1.5 rounded-lg hover:bg-slate-700 disabled:opacity-30 transition" title="Nächste Seite">
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Rechts: Undo, Redo, Vorlage & Export -->
+            <div class="flex items-center gap-1.5">
+                <button onclick="undoAction()" id="undoBtn" class="p-2 rounded-lg hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition" title="Rückgängig">
+                    <i data-lucide="undo-2" class="w-4 h-4"></i>
+                </button>
+                <button onclick="redoAction()" id="redoBtn" class="p-2 rounded-lg hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition" title="Wiederholen">
+                    <i data-lucide="redo-2" class="w-4 h-4"></i>
+                </button>
+                <div class="h-5 w-[1px] bg-slate-700 hidden sm:block"></div>
+                <select id="templateSwitcher" onchange="changeCurrentPageTemplate(this.value)" class="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-2 py-1.5 focus:outline-none hidden sm:block" title="Papiervorlage ändern">
+                    <option value="grid">Kariert</option>
+                    <option value="lined">Liniert</option>
+                    <option value="dotted">Punktiert</option>
+                    <option value="blank">Blanko</option>
+                </select>
+                <button onclick="exportAsPNG()" class="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 transition" title="Als Bild herunterladen">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span class="hidden md:inline">Export</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Zweite Leiste: GoodNotes Werkzeug-Toolbar -->
+        <div class="bg-white border-b border-slate-200 px-2 sm:px-4 py-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 z-20 shadow-sm">
+            <!-- Werkzeug-Auswahl -->
+            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 gap-1">
+                <button onclick="selectTool('pen')" data-tool="pen" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition bg-white text-blue-600 shadow-sm">
+                    <i data-lucide="pen-tool" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Stift</span>
+                </button>
+                <button onclick="selectTool('highlighter')" data-tool="highlighter" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition">
+                    <i data-lucide="highlighter" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Textmarker</span>
+                </button>
+                <button onclick="selectTool('eraser')" data-tool="eraser" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition">
+                    <i data-lucide="eraser" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Radierer</span>
+                </button>
+                <button onclick="selectTool('lasso')" data-tool="lasso" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition">
+                    <i data-lucide="lasso" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Lasso</span>
+                </button>
+                <button onclick="selectTool('shape')" data-tool="shape" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition">
+                    <i data-lucide="shapes" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Formen</span>
+                </button>
+                <button onclick="selectTool('text')" data-tool="text" class="tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition">
+                    <i data-lucide="type" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Text</span>
+                </button>
+            </div>
+
+            <!-- Trenner -->
+            <div class="h-6 w-[1px] bg-slate-200 hidden sm:block"></div>
+
+            <!-- Farbpalette & Farbwähler (für Stift, Textmarker, Formen, Text) -->
+            <div id="colorControls" class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200">
+                <button onclick="setColor('#0f172a')" class="color-swatch w-6 h-6 rounded-full bg-slate-900 border-2 border-white ring-2 ring-blue-500 transition transform hover:scale-110" data-color="#0f172a" title="Schwarz"></button>
+                <button onclick="setColor('#2563eb')" class="color-swatch w-6 h-6 rounded-full bg-blue-600 border-2 border-white transition transform hover:scale-110" data-color="#2563eb" title="Blau"></button>
+                <button onclick="setColor('#dc2626')" class="color-swatch w-6 h-6 rounded-full bg-red-600 border-2 border-white transition transform hover:scale-110" data-color="#dc2626" title="Rot"></button>
+                <button onclick="setColor('#16a34a')" class="color-swatch w-6 h-6 rounded-full bg-green-600 border-2 border-white transition transform hover:scale-110" data-color="#16a34a" title="Grün"></button>
+                <button onclick="setColor('#eab308')" class="color-swatch w-6 h-6 rounded-full bg-yellow-400 border-2 border-white transition transform hover:scale-110" data-color="#eab308" title="Gelb (Marker)"></button>
+                <button onclick="setColor('#ec4899')" class="color-swatch w-6 h-6 rounded-full bg-pink-500 border-2 border-white transition transform hover:scale-110" data-color="#ec4899" title="Pink"></button>
+                <!-- Freier Farbwähler für ALLE Farben -->
+                <label class="relative w-6 h-6 rounded-full overflow-hidden border-2 border-white shadow cursor-pointer flex items-center justify-center bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 hover:scale-110 transition" title="Eigene Farbe wählen">
+                    <input type="color" id="customColorPicker" oninput="setColor(this.value)" value="#0f172a" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                </label>
+            </div>
+
+            <!-- Strichstärke Slider (ALLE Dicken) -->
+            <div id="sizeControls" class="flex items-center gap-2 bg-slate-50 px-3 py-1 rounded-xl border border-slate-200">
+                <span class="text-[11px] font-medium text-slate-500">Dicke:</span>
+                <input type="range" id="strokeWidthSlider" min="1" max="36" value="3" oninput="setStrokeWidth(this.value)" class="w-20 sm:w-24 accent-blue-600 cursor-pointer">
+                <span id="strokeWidthValue" class="text-xs font-semibold text-slate-700 w-7 text-right">3px</span>
+            </div>
+
+            <!-- Formen-Untermenü (nur sichtbar wenn 'shape' aktiv) -->
+            <div id="shapeSubmenu" class="hidden items-center gap-1 bg-blue-50 px-2 py-1 rounded-xl border border-blue-200">
+                <button onclick="setShapeType('rect')" data-shape="rect" class="shape-btn p-1.5 rounded-lg bg-blue-600 text-white" title="Rechteck">
+                    <i data-lucide="square" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="setShapeType('circle')" data-shape="circle" class="shape-btn p-1.5 rounded-lg text-slate-600 hover:bg-blue-100" title="Kreis / Ellipse">
+                    <i data-lucide="circle" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="setShapeType('line')" data-shape="line" class="shape-btn p-1.5 rounded-lg text-slate-600 hover:bg-blue-100" title="Gerade Linie">
+                    <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="setShapeType('arrow')" data-shape="arrow" class="shape-btn p-1.5 rounded-lg text-slate-600 hover:bg-blue-100" title="Pfeil">
+                    <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+
+            <!-- Seite leeren Button -->
+            <button onclick="confirmClearPage()" class="p-2 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition" title="Aktuelle Seite leeren">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Haupt-Zeichenbereich (Scrollbarer Container mit DIN A4 Papierblatt) -->
+        <div id="canvasScrollContainer" class="flex-1 overflow-auto p-4 sm:p-8 flex justify-center items-start relative">
+            <!-- Das Papierblatt -->
+            <div id="paperWrapper" class="relative shadow-2xl rounded-sm overflow-hidden bg-white paper-grid transition-colors duration-200" style="width: 820px; height: 1160px; min-width: 820px; min-height: 1160px;">
+                <!-- Haupt-Canvas -->
+                <canvas id="drawingCanvas" width="820" height="1160" class="block w-full h-full"></canvas>
+                
+                <!-- Schwebendes Lasso-Aktionsmenü (erscheint nach Auswahl mit dem Lasso) -->
+                <div id="lassoFloatingMenu" class="hidden absolute z-30 bg-slate-900/95 backdrop-blur text-white px-2 py-1.5 rounded-xl shadow-xl border border-slate-700 flex items-center gap-1 animate-pop">
+                    <button onclick="duplicateLassoSelection()" class="px-2.5 py-1.5 rounded-lg hover:bg-blue-600 text-xs font-medium flex items-center gap-1.5 transition">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Duplizieren</span>
+                    </button>
+                    <div class="h-4 w-[1px] bg-slate-700"></div>
+                    <button onclick="recolorLassoSelection()" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-700 text-xs font-medium flex items-center gap-1.5 transition" title="Aktuelle Farbe anwenden">
+                        <i data-lucide="palette" class="w-3.5 h-3.5"></i>
+                        <span>Umfärben</span>
+                    </button>
+                    <div class="h-4 w-[1px] bg-slate-700"></div>
+                    <button onclick="deleteLassoSelection()" class="px-2.5 py-1.5 rounded-lg hover:bg-red-600 text-xs font-medium flex items-center gap-1.5 text-red-300 hover:text-white transition">
+                        <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                        <span>Löschen</span>
+                    </button>
+                </div>
+
+                <!-- Schwebendes Text-Eingabefeld für das Text-Werkzeug -->
+                <div id="textInputOverlay" class="hidden absolute z-30">
+                    <input type="text" id="floatingTextInput" placeholder="Text eingeben + Enter..." class="bg-white/95 border-2 border-blue-500 rounded-lg px-2.5 py-1 text-base shadow-lg focus:outline-none min-w-[200px]">
+                </div>
+            </div>
+
+            <!-- Zoom-Steuerung unten rechts -->
+            <div class="fixed bottom-5 right-5 z-30 bg-white/90 backdrop-blur border border-slate-200 rounded-2xl shadow-lg px-2 py-1.5 flex items-center gap-1">
+                <button onclick="changeZoom(-0.15)" class="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600" title="Verkleinern">
+                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                </button>
+                <span id="zoomLevelText" class="text-xs font-semibold text-slate-700 w-12 text-center">100%</span>
+                <button onclick="changeZoom(0.15)" class="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600" title="Vergrößern">
+                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- 1. Modal: Neues Dokument anlegen -->
+    <div id="createModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-pop">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-slate-900">Neues Notizbuch anlegen</h3>
+                <button onclick="closeCreateModal()" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form onsubmit="handleCreateDocument(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Titel des Dokuments</label>
+                    <input type="text" id="newDocTitle" required placeholder="z.B. Mathe Vorlesung, Projektideen..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Passwort zum Öffnen & Bearbeiten</label>
+                    <input type="text" id="newDocPassword" required placeholder="Passwort festlegen..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p class="text-[11px] text-slate-500 mt-1">Teile dieses Passwort mit anderen, damit sie gleichzeitig mitschreiben können.</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Papiervorlage</label>
+                        <select id="newDocTemplate" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="grid">Kariert</option>
+                            <option value="lined">Liniert</option>
+                            <option value="dotted">Punktiert</option>
+                            <option value="blank">Blanko</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Cover-Farbe</label>
+                        <div class="flex items-center gap-2 pt-1.5">
+                            <button type="button" onclick="selectCoverColor('#3b82f6', this)" class="cover-btn w-7 h-7 rounded-lg bg-blue-500 ring-2 ring-offset-2 ring-blue-500"></button>
+                            <button type="button" onclick="selectCoverColor('#10b981', this)" class="cover-btn w-7 h-7 rounded-lg bg-emerald-500"></button>
+                            <button type="button" onclick="selectCoverColor('#f59e0b', this)" class="cover-btn w-7 h-7 rounded-lg bg-amber-500"></button>
+                            <button type="button" onclick="selectCoverColor('#ec4899', this)" class="cover-btn w-7 h-7 rounded-lg bg-pink-500"></button>
+                            <button type="button" onclick="selectCoverColor('#6366f1', this)" class="cover-btn w-7 h-7 rounded-lg bg-indigo-500"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-3 flex justify-end gap-2">
+                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100">Abbrechen</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm">Erstellen & Öffnen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. Modal: Passwort-Abfrage zum Öffnen -->
+    <div id="passwordModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-pop">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+                <i data-lucide="lock" class="w-6 h-6"></i>
+            </div>
+            <h3 id="pwdModalTitle" class="text-lg font-bold text-slate-900">Dokument geschützt</h3>
+            <p class="text-sm text-slate-500 mt-1 mb-4">Bitte gib das Passwort ein, um dieses Notizbuch zu öffnen und gemeinsam zu bearbeiten.</p>
+            <form onsubmit="handleVerifyPassword(event)" class="space-y-4">
+                <div>
+                    <input type="password" id="unlockPasswordInput" required placeholder="Passwort eingeben..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p id="pwdErrorText" class="hidden text-xs text-red-600 font-medium mt-1.5">Falsches Passwort. Bitte erneut versuchen.</p>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closePasswordModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100">Abbrechen</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm">Entsperren</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Toast / Benachrichtigung -->
+    <div id="toastBox" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-full shadow-xl transition-opacity">
+        Nachricht
+    </div>
+
+    <!-- ==================== JAVASCRIPT & FIREBASE ECHTZEIT-LOGIK ==================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Globale App-Variablen
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let useCloudSync = false;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'lndm-notizen';
+
+        // Deine Firebase-Konfiguration für Echtzeit-Kollaboration auf GitHub Pages
+        const CUSTOM_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyD1fFOmDNTIduEPwyJjEm0wJG9a6Ue5jCk",
+            authDomain: "lndm-notizen.firebaseapp.com",
+            projectId: "lndm-notizen",
+            storageBucket: "lndm-notizen.firebasestorage.app",
+            messagingSenderId: "1041518913124",
+            appId: "1:1041518913124:web:eb40c56daca8ca0f386171"
+        };
+
+        // In-Memory State
+        let documentsList = [];
+        let activeDocId = null;
+        let activeDocData = null;
+        let currentPageIndex = 0;
+        let currentStrokes = [];
+        let undoStack = [];
+        let redoStack = [];
+        let unsubscribeDocListener = null;
+
+        // Werkzeug-Status
+        let currentTool = 'pen';
+        let currentColor = '#0f172a';
+        let currentStrokeWidth = 3;
+        let currentShapeType = 'rect';
+        let selectedCoverColor = '#3b82f6';
+        let currentZoom = 1.0;
+
+        let isDrawing = false;
+        let activeStroke = null;
+        let lassoPolygon = [];
+        let selectedStrokeIds = new Set();
+        let isDraggingSelection = false;
+        let dragStartPos = { x: 0, y: 0 };
+        let pendingUnlockDoc = null;
+        let pendingTextPos = null;
+
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+
+        async function initApp() {
+            lucide.createIcons();
+            setupCanvasEvents();
+            adjustInitialZoom();
+
+            let firebaseConfig = CUSTOM_FIREBASE_CONFIG;
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                try { firebaseConfig = JSON.parse(__firebase_config); } catch (e) {}
+            }
+
+            if (firebaseConfig && firebaseConfig.apiKey) {
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    currentUser = auth.currentUser;
+                    useCloudSync = true;
+                    updateConnectionUI(true);
+                    subscribeToDocumentsList();
+                } catch (err) {
+                    console.error("Firebase Fehler, wechsle in lokalen Modus:", err);
+                    enableDemoFallback();
+                }
+            } else {
+                enableDemoFallback();
+            }
+        }
+
+        function enableDemoFallback() {
+            useCloudSync = false;
+            updateConnectionUI(false);
+            documentsList = [
+                {
+                    id: 'demo-doc-1',
+                    title: 'Willkommen in NoteStudio',
+                    password: '123',
+                    coverColor: '#3b82f6',
+                    updatedAt: Date.now(),
+                    pages: [
+                        {
+                            template: 'grid',
+                            strokes: [
+                                {
+                                    id: 's1',
+                                    type: 'text',
+                                    text: 'Passwort zum Öffnen ist: 123',
+                                    x: 70,
+                                    y: 110,
+                                    color: '#1e293b',
+                                    size: 20
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ];
+            renderDocuments();
+        }
+
+        function updateConnectionUI(isOnline) {
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionStatusText');
+            if (isOnline) {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-500 inline-block';
+                text.textContent = 'Echtzeit-Cloud aktiv';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block';
+                text.textContent = 'Lokaler Modus (Demo-Passwort: 123)';
+            }
+        }
+
+        function subscribeToDocumentsList() {
+            if (!db || !currentUser) return;
+            const docsCol = collection(db, 'artifacts', appId, 'public', 'data', 'notebooks');
+            onSnapshot(docsCol, (snapshot) => {
+                documentsList = [];
+                snapshot.forEach((docSnap) => {
+                    documentsList.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                documentsList.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                renderDocuments();
+            }, (error) => {
+                console.error("Fehler beim Laden:", error);
+            });
+        }
+
+        window.renderDocuments = function() {
+            const grid = document.getElementById('documentsGrid');
+            const empty = document.getElementById('emptyState');
+            const queryText = document.getElementById('searchInput').value.toLowerCase().trim();
+
+            const filtered = documentsList.filter(d => (d.title || '').toLowerCase().includes(queryText));
+            grid.innerHTML = '';
+
+            if (filtered.length === 0) {
+                empty.classList.remove('hidden');
+                empty.classList.add('flex');
+                return;
+            }
+            empty.classList.add('hidden');
+            empty.classList.remove('flex');
+
+            filtered.forEach(docItem => {
+                const pageCount = Array.isArray(docItem.pages) ? docItem.pages.length : 1;
+                const dateStr = docItem.updatedAt ? new Date(docItem.updatedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : 'Heute';
+                const card = document.createElement('div');
+                card.className = 'group cursor-pointer flex flex-col items-center';
+                card.onclick = () => promptDocumentUnlock(docItem);
+
+                card.innerHTML = `
+                    <div class="w-full aspect-[3/4] rounded-r-2xl rounded-l-md shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200 relative overflow-hidden flex flex-col justify-between p-4 text-white" style="background-color: ${docItem.coverColor || '#3b82f6'}">
+                        <div class="absolute inset-y-0 left-0 w-3.5 bg-black/20"></div>
+                        <div class="pl-2 flex justify-between items-start">
+                            <span class="bg-black/25 backdrop-blur-sm text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <i data-lucide="lock" class="w-2.5 h-2.5"></i> Geschützt
+                            </span>
+                            <span class="text-[11px] opacity-80">${pageCount} S.</span>
+                        </div>
+                        <div class="pl-2 my-auto">
+                            <div class="bg-white/95 text-slate-900 rounded-xl p-2.5 shadow-sm">
+                                <p class="font-bold text-xs sm:text-sm line-clamp-2 leading-snug">${escapeHtml(docItem.title)}</p>
+                            </div>
+                        </div>
+                        <div class="pl-2 text-[10px] opacity-80 flex items-center justify-between">
+                            <span>Geändert: ${dateStr}</span>
+                            <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs sm:text-sm font-semibold text-slate-800 text-center truncate w-full px-1">${escapeHtml(docItem.title)}</p>
+                `;
+                grid.appendChild(card);
+            });
+            lucide.createIcons();
+        };
+
+        window.openCreateModal = () => {
+            document.getElementById('newDocTitle').value = '';
+            document.getElementById('newDocPassword').value = '';
+            document.getElementById('createModal').classList.remove('hidden');
+            document.getElementById('newDocTitle').focus();
+        };
+        window.closeCreateModal = () => document.getElementById('createModal').classList.add('hidden');
+
+        window.selectCoverColor = (color, btn) => {
+            selectedCoverColor = color;
+            document.querySelectorAll('.cover-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-500'));
+            btn.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
+        };
+
+        window.handleCreateDocument = async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('newDocTitle').value.trim();
+            const password = document.getElementById('newDocPassword').value.trim();
+            const template = document.getElementById('newDocTemplate').value;
+
+            if (!title || !password) return;
+
+            const newDoc = {
+                title,
+                password,
+                coverColor: selectedCoverColor,
+                updatedAt: Date.now(),
+                pages: [{ template, strokes: [] }]
+            };
+
+            closeCreateModal();
+
+            if (useCloudSync && db && currentUser) {
+                try {
+                    const docsCol = collection(db, 'artifacts', appId, 'public', 'data', 'notebooks');
+                    const docRef = await addDoc(docsCol, newDoc);
+                    openEditor({ id: docRef.id, ...newDoc });
+                } catch (err) {
+                    console.error(err);
+                }
+            } else {
+                const localId = 'local-' + Date.now();
+                const created = { id: localId, ...newDoc };
+                documentsList.unshift(created);
+                renderDocuments();
+                openEditor(created);
+            }
+        };
+
+        function promptDocumentUnlock(docItem) {
+            pendingUnlockDoc = docItem;
+            document.getElementById('pwdModalTitle').textContent = `"${docItem.title}" öffnen`;
+            document.getElementById('unlockPasswordInput').value = '';
+            document.getElementById('pwdErrorText').classList.add('hidden');
+            document.getElementById('passwordModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('unlockPasswordInput').focus(), 50);
+        }
+
+        window.closePasswordModal = () => {
+            document.getElementById('passwordModal').classList.add('hidden');
+            pendingUnlockDoc = null;
+        };
+
+        window.handleVerifyPassword = (e) => {
+            e.preventDefault();
+            if (!pendingUnlockDoc) return;
+            const entered = document.getElementById('unlockPasswordInput').value;
+            if (entered === pendingUnlockDoc.password) {
+                const target = pendingUnlockDoc;
+                closePasswordModal();
+                openEditor(target);
+            } else {
+                document.getElementById('pwdErrorText').classList.remove('hidden');
+            }
+        };
+
+        function openEditor(docItem) {
+            activeDocId = docItem.id;
+            activeDocData = JSON.parse(JSON.stringify(docItem));
+            if (!activeDocData.pages || activeDocData.pages.length === 0) {
+                activeDocData.pages = [{ template: 'grid', strokes: [] }];
+            }
+            currentPageIndex = 0;
+            undoStack = [];
+            redoStack = [];
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+
+            document.getElementById('dashboardView').classList.add('hidden');
+            document.getElementById('editorView').classList.remove('hidden');
+            document.getElementById('editorView').classList.add('flex');
+            document.getElementById('editorDocTitle').textContent = activeDocData.title;
+
+            loadPageState();
+
+            if (useCloudSync && db && currentUser) {
+                if (unsubscribeDocListener) unsubscribeDocListener();
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'notebooks', activeDocId);
+                unsubscribeDocListener = onSnapshot(docRef, (snap) => {
+                    if (!snap.exists()) return;
+                    const remoteData = snap.data();
+                    if (!isDrawing && !isDraggingSelection) {
+                        activeDocData = { id: snap.id, ...remoteData };
+                        if (currentPageIndex >= activeDocData.pages.length) {
+                            currentPageIndex = activeDocData.pages.length - 1;
+                        }
+                        loadPageState();
+                    }
+                }, (err) => console.error(err));
+            }
+        }
+
+        window.exitEditor = () => {
+            if (unsubscribeDocListener) {
+                unsubscribeDocListener();
+                unsubscribeDocListener = null;
+            }
+            activeDocId = null;
+            activeDocData = null;
+            document.getElementById('editorView').classList.add('hidden');
+            document.getElementById('editorView').classList.remove('flex');
+            document.getElementById('dashboardView').classList.remove('hidden');
+        };
+
+        function loadPageState() {
+            if (!activeDocData) return;
+            const page = activeDocData.pages[currentPageIndex];
+            currentStrokes = (page.strokes || []).map(s => {
+                if (typeof s.pointsJson === 'string') {
+                    return { ...s, points: JSON.parse(s.pointsJson) };
+                }
+                return s;
+            });
+
+            const wrapper = document.getElementById('paperWrapper');
+            wrapper.classList.remove('paper-blank', 'paper-lined', 'paper-grid', 'paper-dotted');
+            wrapper.classList.add('paper-' + (page.template || 'grid'));
+            document.getElementById('templateSwitcher').value = page.template || 'grid';
+
+            document.getElementById('pageIndicator').textContent = `Seite ${currentPageIndex + 1} / ${activeDocData.pages.length}`;
+            document.getElementById('prevPageBtn').disabled = currentPageIndex === 0;
+            document.getElementById('nextPageBtn').disabled = currentPageIndex >= activeDocData.pages.length - 1;
+            document.getElementById('undoBtn').disabled = undoStack.length === 0;
+            document.getElementById('redoBtn').disabled = redoStack.length === 0;
+
+            redrawCanvas();
+        }
+
+        async function syncCurrentPageToCloud() {
+            if (!activeDocData) return;
+            const serializedStrokes = currentStrokes.map(s => {
+                const copy = { ...s };
+                if (Array.isArray(copy.points)) {
+                    copy.pointsJson = JSON.stringify(copy.points);
+                    delete copy.points;
+                }
+                return copy;
+            });
+
+            activeDocData.pages[currentPageIndex].strokes = serializedStrokes;
+            activeDocData.updatedAt = Date.now();
+
+            if (useCloudSync && db && currentUser && activeDocId) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'notebooks', activeDocId);
+                    await updateDoc(docRef, {
+                        pages: activeDocData.pages,
+                        updatedAt: activeDocData.updatedAt
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+            } else {
+                const idx = documentsList.findIndex(d => d.id === activeDocId);
+                if (idx !== -1) documentsList[idx] = JSON.parse(JSON.stringify(activeDocData));
+            }
+        }
+
+        window.addNewPage = async () => {
+            if (!activeDocData) return;
+            const currentTemplate = activeDocData.pages[currentPageIndex].template || 'grid';
+            activeDocData.pages.push({ template: currentTemplate, strokes: [] });
+            currentPageIndex = activeDocData.pages.length - 1;
+            undoStack = [];
+            redoStack = [];
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+            loadPageState();
+            await syncCurrentPageToCloud();
+            showToast("Neue Seite hinzugefügt");
+        };
+
+        window.prevPage = () => {
+            if (currentPageIndex > 0) {
+                currentPageIndex--;
+                undoStack = [];
+                redoStack = [];
+                selectedStrokeIds.clear();
+                hideLassoMenu();
+                loadPageState();
+            }
+        };
+
+        window.nextPage = () => {
+            if (activeDocData && currentPageIndex < activeDocData.pages.length - 1) {
+                currentPageIndex++;
+                undoStack = [];
+                redoStack = [];
+                selectedStrokeIds.clear();
+                hideLassoMenu();
+                loadPageState();
+            }
+        };
+
+        window.changeCurrentPageTemplate = async (tpl) => {
+            if (!activeDocData) return;
+            activeDocData.pages[currentPageIndex].template = tpl;
+            loadPageState();
+            await syncCurrentPageToCloud();
+        };
+
+        function pushUndoState() {
+            undoStack.push(JSON.stringify(currentStrokes));
+            if (undoStack.length > 30) undoStack.shift();
+            redoStack = [];
+            document.getElementById('undoBtn').disabled = false;
+            document.getElementById('redoBtn').disabled = true;
+        }
+
+        window.undoAction = async () => {
+            if (undoStack.length === 0) return;
+            redoStack.push(JSON.stringify(currentStrokes));
+            currentStrokes = JSON.parse(undoStack.pop());
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+            redrawCanvas();
+            document.getElementById('undoBtn').disabled = undoStack.length === 0;
+            document.getElementById('redoBtn').disabled = false;
+            await syncCurrentPageToCloud();
+        };
+
+        window.redoAction = async () => {
+            if (redoStack.length === 0) return;
+            undoStack.push(JSON.stringify(currentStrokes));
+            currentStrokes = JSON.parse(redoStack.pop());
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+            redrawCanvas();
+            document.getElementById('undoBtn').disabled = false;
+            document.getElementById('redoBtn').disabled = redoStack.length === 0;
+            await syncCurrentPageToCloud();
+        };
+
+        window.confirmClearPage = async () => {
+            if (currentStrokes.length === 0) return;
+            pushUndoState();
+            currentStrokes = [];
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+            redrawCanvas();
+            await syncCurrentPageToCloud();
+            showToast("Seite geleert");
+        };
+
+        window.selectTool = (tool) => {
+            currentTool = tool;
+            selectedStrokeIds.clear();
+            lassoPolygon = [];
+            hideLassoMenu();
+            hideTextOverlay();
+
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                if (btn.dataset.tool === tool) {
+                    btn.className = 'tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition bg-white text-blue-600 shadow-sm';
+                } else {
+                    btn.className = 'tool-btn p-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-white/60 transition';
+                }
+            });
+
+            if (tool === 'highlighter' && currentStrokeWidth < 12) {
+                setStrokeWidth(18);
+                if (currentColor === '#0f172a') setColor('#eab308');
+            } else if (tool === 'pen' && currentStrokeWidth > 14) {
+                setStrokeWidth(3);
+            }
+
+            const shapeSub = document.getElementById('shapeSubmenu');
+            if (tool === 'shape') {
+                shapeSub.classList.remove('hidden');
+                shapeSub.classList.add('flex');
+            } else {
+                shapeSub.classList.add('hidden');
+                shapeSub.classList.remove('flex');
+            }
+
+            redrawCanvas();
+        };
+
+        window.setColor = (hex) => {
+            currentColor = hex;
+            document.getElementById('customColorPicker').value = hex;
+            document.querySelectorAll('.color-swatch').forEach(sw => {
+                if (sw.dataset.color.toLowerCase() === hex.toLowerCase()) {
+                    sw.classList.add('ring-2', 'ring-blue-500');
+                } else {
+                    sw.classList.remove('ring-2', 'ring-blue-500');
+                }
+            });
+        };
+
+        window.setStrokeWidth = (val) => {
+            currentStrokeWidth = parseInt(val, 10);
+            document.getElementById('strokeWidthSlider').value = currentStrokeWidth;
+            document.getElementById('strokeWidthValue').textContent = `${currentStrokeWidth}px`;
+        };
+
+        window.setShapeType = (shape) => {
+            currentShapeType = shape;
+            document.querySelectorAll('.shape-btn').forEach(btn => {
+                if (btn.dataset.shape === shape) {
+                    btn.className = 'shape-btn p-1.5 rounded-lg bg-blue-600 text-white';
+                } else {
+                    btn.className = 'shape-btn p-1.5 rounded-lg text-slate-600 hover:bg-blue-100';
+                }
+            });
+        };
+
+        function getCanvasCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        function setupCanvasEvents() {
+            canvas.addEventListener('pointerdown', onPointerDown);
+            canvas.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+
+            const textInput = document.getElementById('floatingTextInput');
+            textInput.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    await commitTextInput();
+                } else if (e.key === 'Escape') {
+                    hideTextOverlay();
+                }
+            });
+        }
+
+        function onPointerDown(e) {
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
+            const pos = getCanvasCoords(e);
+
+            if (currentTool === 'text') {
+                if (!document.getElementById('textInputOverlay').classList.contains('hidden')) {
+                    commitTextInput();
+                    return;
+                }
+                showTextOverlay(pos.x, pos.y);
+                return;
+            }
+
+            if (currentTool === 'lasso' && selectedStrokeIds.size > 0) {
+                const bounds = getSelectionBounds();
+                if (bounds && pos.x >= bounds.minX - 15 && pos.x <= bounds.maxX + 15 && pos.y >= bounds.minY - 15 && pos.y <= bounds.maxY + 15) {
+                    isDraggingSelection = true;
+                    dragStartPos = pos;
+                    pushUndoState();
+                    return;
+                } else {
+                    selectedStrokeIds.clear();
+                    hideLassoMenu();
+                }
+            }
+
+            isDrawing = true;
+            canvas.setPointerCapture(e.pointerId);
+
+            if (currentTool === 'pen' || currentTool === 'highlighter') {
+                pushUndoState();
+                activeStroke = {
+                    id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    type: currentTool,
+                    color: currentColor,
+                    width: currentStrokeWidth,
+                    points: [pos]
+                };
+            } else if (currentTool === 'eraser') {
+                pushUndoState();
+                eraseAtPoint(pos.x, pos.y);
+            } else if (currentTool === 'lasso') {
+                lassoPolygon = [pos];
+            } else if (currentTool === 'shape') {
+                pushUndoState();
+                activeStroke = {
+                    id: 'sh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    type: 'shape',
+                    shapeType: currentShapeType,
+                    color: currentColor,
+                    width: currentStrokeWidth,
+                    startX: pos.x,
+                    startY: pos.y,
+                    endX: pos.x,
+                    endY: pos.y
+                };
+            }
+        }
+
+        function onPointerMove(e) {
+            const pos = getCanvasCoords(e);
+
+            if (isDraggingSelection) {
+                const dx = pos.x - dragStartPos.x;
+                const dy = pos.y - dragStartPos.y;
+                dragStartPos = pos;
+                moveSelectedStrokes(dx, dy);
+                redrawCanvas();
+                positionLassoMenu();
+                return;
+            }
+
+            if (!isDrawing) return;
+
+            if (currentTool === 'pen' || currentTool === 'highlighter') {
+                if (activeStroke) {
+                    activeStroke.points.push(pos);
+                    redrawCanvas();
+                    renderSingleStroke(activeStroke);
+                }
+            } else if (currentTool === 'eraser') {
+                eraseAtPoint(pos.x, pos.y);
+            } else if (currentTool === 'lasso') {
+                lassoPolygon.push(pos);
+                redrawCanvas();
+                drawLassoPath();
+            } else if (currentTool === 'shape' && activeStroke) {
+                activeStroke.endX = pos.x;
+                activeStroke.endY = pos.y;
+                redrawCanvas();
+                renderSingleStroke(activeStroke);
+            }
+        }
+
+        async function onPointerUp(e) {
+            if (isDraggingSelection) {
+                isDraggingSelection = false;
+                await syncCurrentPageToCloud();
+                return;
+            }
+
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            if ((currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'shape') && activeStroke) {
+                currentStrokes.push(activeStroke);
+                activeStroke = null;
+                redrawCanvas();
+                await syncCurrentPageToCloud();
+            } else if (currentTool === 'eraser') {
+                await syncCurrentPageToCloud();
+            } else if (currentTool === 'lasso') {
+                finalizeLassoSelection();
+            }
+        }
+
+        function eraseAtPoint(x, y) {
+            const radius = Math.max(12, currentStrokeWidth * 1.5);
+            const initialLen = currentStrokes.length;
+            currentStrokes = currentStrokes.filter(stroke => !isStrokeNearPoint(stroke, x, y, radius));
+            if (currentStrokes.length !== initialLen) {
+                redrawCanvas();
+            }
+        }
+
+        function isStrokeNearPoint(stroke, x, y, radius) {
+            if (stroke.type === 'pen' || stroke.type === 'highlighter') {
+                return (stroke.points || []).some(pt => Math.hypot(pt.x - x, pt.y - y) <= radius + (stroke.width || 4) / 2);
+            } else if (stroke.type === 'shape') {
+                const minX = Math.min(stroke.startX, stroke.endX) - radius;
+                const maxX = Math.max(stroke.startX, stroke.endX) + radius;
+                const minY = Math.min(stroke.startY, stroke.endY) - radius;
+                const maxY = Math.max(stroke.startY, stroke.endY) + radius;
+                return x >= minX && x <= maxX && y >= minY && y <= maxY;
+            } else if (stroke.type === 'text') {
+                return x >= stroke.x - 10 && x <= stroke.x + (stroke.text.length * stroke.size * 0.6) && y >= stroke.y - stroke.size && y <= stroke.y + 10;
+            }
+            return false;
+        }
+
+        function drawLassoPath() {
+            if (lassoPolygon.length < 2) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.setLineDash([6, 6]);
+            ctx.strokeStyle = '#2563eb';
+            ctx.lineWidth = 2;
+            ctx.moveTo(lassoPolygon[0].x, lassoPolygon[0].y);
+            for (let i = 1; i < lassoPolygon.length; i++) {
+                ctx.lineTo(lassoPolygon[i].x, lassoPolygon[i].y);
+            }
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function finalizeLassoSelection() {
+            selectedStrokeIds.clear();
+            if (lassoPolygon.length >= 3) {
+                currentStrokes.forEach(stroke => {
+                    if (isStrokeInsidePolygon(stroke, lassoPolygon)) {
+                        selectedStrokeIds.add(stroke.id);
+                    }
+                });
+            }
+            lassoPolygon = [];
+            redrawCanvas();
+            if (selectedStrokeIds.size > 0) {
+                positionLassoMenu();
+            } else {
+                hideLassoMenu();
+            }
+        }
+
+        function isStrokeInsidePolygon(stroke, poly) {
+            if (stroke.type === 'pen' || stroke.type === 'highlighter') {
+                return (stroke.points || []).some(pt => pointInPolygon(pt, poly));
+            } else if (stroke.type === 'shape') {
+                const center = { x: (stroke.startX + stroke.endX) / 2, y: (stroke.startY + stroke.endY) / 2 };
+                return pointInPolygon(center, poly) || pointInPolygon({ x: stroke.startX, y: stroke.startY }, poly);
+            } else if (stroke.type === 'text') {
+                return pointInPolygon({ x: stroke.x + 15, y: stroke.y - 8 }, poly);
+            }
+            return false;
+        }
+
+        function pointInPolygon(point, vs) {
+            let x = point.x, y = point.y;
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                let xi = vs[i].x, yi = vs[i].y;
+                let xj = vs[j].x, yj = vs[j].y;
+                let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 0.00001) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function getSelectionBounds() {
+            if (selectedStrokeIds.size === 0) return null;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            currentStrokes.forEach(s => {
+                if (!selectedStrokeIds.has(s.id)) return;
+                if (s.type === 'pen' || s.type === 'highlighter') {
+                    (s.points || []).forEach(p => {
+                        if (p.x < minX) minX = p.x;
+                        if (p.y < minY) minY = p.y;
+                        if (p.x > maxX) maxX = p.x;
+                        if (p.y > maxY) maxY = p.y;
+                    });
+                } else if (s.type === 'shape') {
+                    minX = Math.min(minX, s.startX, s.endX);
+                    minY = Math.min(minY, s.startY, s.endY);
+                    maxX = Math.max(maxX, s.startX, s.endX);
+                    maxY = Math.max(maxY, s.startY, s.endY);
+                } else if (s.type === 'text') {
+                    minX = Math.min(minX, s.x);
+                    minY = Math.min(minY, s.y - s.size);
+                    maxX = Math.max(maxX, s.x + (s.text.length * s.size * 0.55));
+                    maxY = Math.max(maxY, s.y + 6);
+                }
+            });
+            return { minX, minY, maxX, maxY };
+        }
+
+        function moveSelectedStrokes(dx, dy) {
+            currentStrokes.forEach(s => {
+                if (!selectedStrokeIds.has(s.id)) return;
+                if (s.type === 'pen' || s.type === 'highlighter') {
+                    s.points = s.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                } else if (s.type === 'shape') {
+                    s.startX += dx; s.startY += dy;
+                    s.endX += dx; s.endY += dy;
+                } else if (s.type === 'text') {
+                    s.x += dx; s.y += dy;
+                }
+            });
+        }
+
+        window.duplicateLassoSelection = async () => {
+            if (selectedStrokeIds.size === 0) return;
+            pushUndoState();
+            const newIds = new Set();
+            const offset = 32;
+
+            const clones = [];
+            currentStrokes.forEach(s => {
+                if (!selectedStrokeIds.has(s.id)) return;
+                const clone = JSON.parse(JSON.stringify(s));
+                clone.id = 'dup_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                if (clone.type === 'pen' || clone.type === 'highlighter') {
+                    clone.points = clone.points.map(p => ({ x: p.x + offset, y: p.y + offset }));
+                } else if (clone.type === 'shape') {
+                    clone.startX += offset; clone.startY += offset;
+                    clone.endX += offset; clone.endY += offset;
+                } else if (clone.type === 'text') {
+                    clone.x += offset; clone.y += offset;
+                }
+                clones.push(clone);
+                newIds.add(clone.id);
+            });
+
+            currentStrokes.push(...clones);
+            selectedStrokeIds = newIds;
+            redrawCanvas();
+            positionLassoMenu();
+            await syncCurrentPageToCloud();
+            showToast("Auswahl dupliziert");
+        };
+
+        window.recolorLassoSelection = async () => {
+            if (selectedStrokeIds.size === 0) return;
+            pushUndoState();
+            currentStrokes.forEach(s => {
+                if (selectedStrokeIds.has(s.id)) s.color = currentColor;
+            });
+            redrawCanvas();
+            await syncCurrentPageToCloud();
+        };
+
+        window.deleteLassoSelection = async () => {
+            if (selectedStrokeIds.size === 0) return;
+            pushUndoState();
+            currentStrokes = currentStrokes.filter(s => !selectedStrokeIds.has(s.id));
+            selectedStrokeIds.clear();
+            hideLassoMenu();
+            redrawCanvas();
+            await syncCurrentPageToCloud();
+        };
+
+        function positionLassoMenu() {
+            const bounds = getSelectionBounds();
+            const menu = document.getElementById('lassoFloatingMenu');
+            if (!bounds) { hideLassoMenu(); return; }
+            menu.classList.remove('hidden');
+            const left = Math.max(10, Math.min(canvas.width - 280, bounds.minX));
+            const top = Math.max(10, bounds.minY - 50);
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
+        }
+
+        function hideLassoMenu() {
+            document.getElementById('lassoFloatingMenu').classList.add('hidden');
+        }
+
+        function showTextOverlay(x, y) {
+            pendingTextPos = { x, y };
+            const overlay = document.getElementById('textInputOverlay');
+            const input = document.getElementById('floatingTextInput');
+            overlay.style.left = `${Math.min(x, canvas.width - 220)}px`;
+            overlay.style.top = `${Math.max(10, y - 20)}px`;
+            overlay.classList.remove('hidden');
+            input.value = '';
+            input.style.color = currentColor;
+            setTimeout(() => input.focus(), 20);
+        }
+
+        function hideTextOverlay() {
+            document.getElementById('textInputOverlay').classList.add('hidden');
+            pendingTextPos = null;
+        }
+
+        async function commitTextInput() {
+            const input = document.getElementById('floatingTextInput');
+            const text = input.value.trim();
+            if (text && pendingTextPos) {
+                pushUndoState();
+                currentStrokes.push({
+                    id: 'tx_' + Date.now(),
+                    type: 'text',
+                    text,
+                    x: pendingTextPos.x,
+                    y: pendingTextPos.y,
+                    color: currentColor,
+                    size: Math.max(16, currentStrokeWidth * 3)
+                });
+                redrawCanvas();
+                await syncCurrentPageToCloud();
+            }
+            hideTextOverlay();
+        }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            currentStrokes.filter(s => s.type === 'highlighter').forEach(renderSingleStroke);
+            currentStrokes.filter(s => s.type !== 'highlighter').forEach(renderSingleStroke);
+
+            if (selectedStrokeIds.size > 0) {
+                const b = getSelectionBounds();
+                if (b) {
+                    ctx.save();
+                    ctx.strokeStyle = '#2563eb';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    ctx.fillStyle = 'rgba(37, 99, 235, 0.06)';
+                    const pad = 10;
+                    ctx.fillRect(b.minX - pad, b.minY - pad, (b.maxX - b.minX) + pad * 2, (b.maxY - b.minY) + pad * 2);
+                    ctx.strokeRect(b.minX - pad, b.minY - pad, (b.maxX - b.minX) + pad * 2, (b.maxY - b.minY) + pad * 2);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function renderSingleStroke(s) {
+            ctx.save();
+            if (s.type === 'pen' || s.type === 'highlighter') {
+                const pts = s.points || [];
+                if (pts.length === 0) { ctx.restore(); return; }
+
+                ctx.beginPath();
+                ctx.lineCap = s.type === 'highlighter' ? 'butt' : 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = s.color;
+                ctx.lineWidth = s.width || 3;
+                ctx.globalAlpha = s.type === 'highlighter' ? 0.35 : 1.0;
+
+                if (pts.length === 1) {
+                    ctx.arc(pts[0].x, pts[0].y, (s.width || 3) / 2, 0, Math.PI * 2);
+                    ctx.fillStyle = s.color;
+                    ctx.fill();
+                } else {
+                    ctx.moveTo(pts[0].x, pts[0].y);
+                    for (let i = 1; i < pts.length - 1; i++) {
+                        const midX = (pts[i].x + pts[i + 1].x) / 2;
+                        const midY = (pts[i].y + pts[i + 1].y) / 2;
+                        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+                    }
+                    const last = pts[pts.length - 1];
+                    ctx.lineTo(last.x, last.y);
+                    ctx.stroke();
+                }
+            } else if (s.type === 'shape') {
+                ctx.strokeStyle = s.color;
+                ctx.lineWidth = s.width || 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+
+                if (s.shapeType === 'rect') {
+                    ctx.strokeRect(s.startX, s.startY, s.endX - s.startX, s.endY - s.startY);
+                } else if (s.shapeType === 'circle') {
+                    const rx = Math.abs(s.endX - s.startX) / 2;
+                    const ry = Math.abs(s.endY - s.startY) / 2;
+                    const cx = Math.min(s.startX, s.endX) + rx;
+                    const cy = Math.min(s.startY, s.endY) + ry;
+                    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (s.shapeType === 'line') {
+                    ctx.moveTo(s.startX, s.startY);
+                    ctx.lineTo(s.endX, s.endY);
+                    ctx.stroke();
+                } else if (s.shapeType === 'arrow') {
+                    const headlen = 14 + (s.width || 3);
+                    const angle = Math.atan2(s.endY - s.startY, s.endX - s.startX);
+                    ctx.moveTo(s.startX, s.startY);
+                    ctx.lineTo(s.endX, s.endY);
+                    ctx.lineTo(s.endX - headlen * Math.cos(angle - Math.PI / 6), s.endY - headlen * Math.sin(angle - Math.PI / 6));
+                    ctx.moveTo(s.endX, s.endY);
+                    ctx.lineTo(s.endX - headlen * Math.cos(angle + Math.PI / 6), s.endY - headlen * Math.sin(angle + Math.PI / 6));
+                    ctx.stroke();
+                }
+            } else if (s.type === 'text') {
+                ctx.font = `500 ${s.size || 18}px Inter, sans-serif`;
+                ctx.fillStyle = s.color || '#0f172a';
+                ctx.fillText(s.text, s.x, s.y);
+            }
+            ctx.restore();
+        }
+
+        function adjustInitialZoom() {
+            const screenW = window.innerWidth;
+            if (screenW < 860) {
+                currentZoom = Math.max(0.42, (screenW - 32) / 820);
+                applyZoom();
+            }
+        }
+
+        window.changeZoom = (delta) => {
+            currentZoom = Math.min(2.0, Math.max(0.4, +(currentZoom + delta).toFixed(2)));
+            applyZoom();
+        };
+
+        function applyZoom() {
+            const wrapper = document.getElementById('paperWrapper');
+            wrapper.style.transform = `scale(${currentZoom})`;
+            wrapper.style.transformOrigin = 'top center';
+            document.getElementById('zoomLevelText').textContent = `${Math.round(currentZoom * 100)}%`;
+        }
+
+        window.exportAsPNG = () => {
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = canvas.width;
+            exportCanvas.height = canvas.height;
+            const eCtx = exportCanvas.getContext('2d');
+            eCtx.fillStyle = '#ffffff';
+            eCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+            eCtx.drawImage(canvas, 0, 0);
+
+            const link = document.createElement('a');
+            link.download = `${(activeDocData?.title || 'Notiz')}_Seite_${currentPageIndex + 1}.png`;
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+            showToast("Seite als PNG exportiert");
+        };
+
+        function showToast(msg) {
+            const box = document.getElementById('toastBox');
+            box.textContent = msg;
+            box.classList.remove('hidden');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => box.classList.add('hidden'), 2800);
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
